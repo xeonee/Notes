@@ -1,0 +1,27 @@
+PRIMARY KEY (userid, added_date, videoid)
+The first element in our PRIMARY KEY is what we call a partition key.  
+The partition key has a special use -> determining data locality.
+When data is inserted into the cluster, the first step is to apply a hash function to the partition key. The output is used to determine what node (and replicas) will get the data. The algorithm used by Apache Cassandra utilizes Murmur3 which will take an arbitrary input and create a consistent token value. That token value will be inside the range of tokens owned by single node.
+All columns listed after the partition key are called clustering columns. Where the partition key is important for data locality, the clustering column specifies the order that the data is arranged inside the partition. 
+for example, in table:
+CREATE TABLE user_videos (
+   userid uuid,
+   added_date timestamp,
+   videoid uuid,
+   name text,
+   preview_image_location text,
+   PRIMARY KEY (userid, added_date, videoid)
+);
+Item one (userid) is the partition key
+Item two (added_date) is the first clustering column. Added_date is a timestamp so the sort order is chronological, ascending.
+Item three (videoid) is the second clustering column. Since videoid is a UUID, we are including it so simply show that it is a part of a unique record.
+One last issue that may still be encountered with this solution is (again) unbounded row growth.
+Depending on the frequency of user postings, this solution may be at risk for hitting the limit of two billion columns per partition. A possible solution for this is to add an additional partition key.  Letís say that we know that the postsbyuser data will not exceed the limit of two billion columns per partition in a single calendar year. Then, we could solve this issue by using year as an additional partition key:
+CREATE TABLE postsbyuseryear (
+  userid bigint,
+  posttime timestamp,
+  postid uuid,
+  postcontent text,
+  year bigint,
+  PRIMARY KEY ((userid, year), posttime)
+) WITH CLUSTERING ORDER BY (posttime DESC);
