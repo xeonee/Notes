@@ -1,0 +1,407 @@
+SparkSession
+-------------
+# SparkSession serves as the entry point for Spark SQL.
+# You create a SparkSession using the SparkSession.builder method (that gives you access to Builder API that you use to configure the session).
+# In older version of Spark there was different contexts that was entrypoints to the different api (sparkcontext for the core api, sql context for the spark-sql api, streaming context for the Dstream api etc...) this was source of confusion for the developer and was a point of optimization for the spark team, so in the most recent version of spark there is only one entrypoint (the spark session) and from this you can get the various other entrypoint (the spark context , the streaming context , etc...)
+Lineage
+----------
+# Computations on RDDs are represented as a lineage graph, a DAG representing the computations done on the RDD.
+# This representation/DAG is what Spark analyzes to do optimizations.
+Narrow vs Wide Dependencies
+-------------------------------------
+# Transformations falls into two categories: transformations with narrow dependencies and transformations with wide dependencies.
+# In Narrow dependencies, a partition gets its data from a single partition in the preceding transformation.
+# Narrow transformations can be executed on an arbitrary subset of the data without any information about the other partitions. e.g map.
+# Transformations with wide dependencies cannot be executed on arbitrary rows and instead require the data to be partitioned in a particular way.
+# Transformations with wide dependencies include sort, reduceByKey, groupByKey, join, and anything that calls the rePartition function.
+# In general, Narrow dependencies do not require data to be moved across partitions, Wide dependencies does.
+# Narrow transformations/tasks happen independently on each of the partitions.
+DataFrames, Datasets, and Spark SQL
+----------------------------------------------
+# Like RDDs, DataFrames and Datasets represent distributed collections, with additional schema information not found in RDDs.
+# This additional schema information is used to provide a more efficient storage layer (Tungsten), and in the optimizer (Catalyst) to perform         additional optimisations.
+# Beyond schema information, the operations performed on Datasets and DataFrames are such that the optimizer can inspect the logical meaning rather than arbitrary functions.
+# Spark SQL transformations are only partially lazy; the schema is eagerly evaluated.
+Dataframe
+--------------
+# Spark SQL transformations are only partially lazy; the schema is eagerly evaluated.
+# lit: A column literal is a column with a fixed value that doesnít change between rows (i.e., constant).
+# explode: https://stackoverflow.com/questions/43582989/whats-the-difference-between-explode-function-and-operator
+# DataFrame transformations for missing and noisy data:
+        you can use coalesce(c1,c2, ..) to return the first nonnull column.
+        nanvl returns the first non-NaN value (e.g., nanvl(0/0, sqrt(-2), 3) results in 3).
+        To simplify working with missing data, the na function on DataFrame can be used.
+
+# To find out those Spark transformations that causes a Shuffle...
+        simply create an RDD and call to debug string...if ShuffledRDD comes in the output then that transformation will cause a Shuffle.
+    
+# Here is a list of operations that might cause a shuffle:
+    cogroup
+    groupWith
+    join: hash partition
+    leftOuterJoin: hash partition
+    rightOuterJoin: hash partition
+    groupByKey: hash partition
+    reduceByKey: hash partition
+    combineByKey: hash partition
+    sortByKey: range partition
+    distinct
+    intersection: hash partition
+    repartition
+    coalesce
+# Aggregates and groupBy
+    groupBy is now a safe operation on DataFrames thanks to the Spark SQL optimizer, which automatically pipelines 
+    our reductions, avoiding giant shuffles and mega records.
+    For computing aggregations, you should use the agg API on the GroupedData instead of directly calling count, mean, or
+    similar convenience functions.
+# Tungsten is a new Spark SQL component that provides more efficient Spark operations by working directly at the byte level.
+   Tungsten representation is substantially smaller than objects serialized using Java or even Kryo serializers. 
+   As Tungsten does not depend on Java objects, both on-heap and off-heap allocations are supported. 
+   Not only is the format more compact, but serialization times can be substantially faster than with native serialization.
+   By avoiding the memory and GC overhead of regular Java objects, Tungsten is able to process larger datasets than 
+   the same handwritten aggregations.
+# The partitionBy function takes a list of columns to partition the output on.
+Datasets
+------------
+# Datasets are an extension of Spark SQL that provide additional compile time type checking.    
+# In Spark 2.0, Dataframes are actually Datasets of Row objects e.g. Dataset[Row].
+# Create a Dataset from a DataFrame:
+        df.as[RawPanda] creates a Dataset[RawPanda]
+# to convert RDD to Dataset you can first convert from RDD to DataFrame and then convert it to a Dataset.
+# In Dataframe has no type safety, everything is untyped.
+# We could have both Spark SQL's Optimizations and type safety with Datasets.
+# Datasets are actually Dataframes with type of Row:
+    type DataFrame = Dataset[Row]
+# Datasets are typed collection of data.
+# Dataset API unifies the DataFrame and RDD APIs.
+# Dataset require TypedColumn instead of Column. To create a typed Column, call as[...] on Column:
+      $"price".as[Double]
+# Use Dataset when:
+        You have structured/semi-structured data.
+        You want type safety.
+        You need to work with functional API.
+# Limitations of Dataset: 
+    # Catalyst can’t optimise all operations, for example:
+    
+        Catalyst can optimise Relational filter operation:
+            ds.filter($”city”.as[String] === “Boston”)
+        Catalyst can't optimise Functional filter operation:
+            ds.filter(p => p.city == “Boston”)
+    
+     # When using Datasets with higher order functions like map, you miss out on many Catalyst optimisations.
+# Encoders are what converts the data between JVM object and Spark SQL's tabular representation.
+# Encoders are highly optimized , specialized code generators that generates custom bytecodes for serialization/deserialization of data.
+Catalyst
+-----------
+# Catalyst is the Spark SQL query optimizer, which is used to take the query plan and transform it into an execution plan that Spark can run.
+# As we apply relational and functional transformations on DataFrames/Datasets, Spark SQL builds up a tree representing our query plan, called a logical plan.
+# Spark is able to apply a number of optimizations on the logical plan and can also choose between multiple physical plans for the same logical plan using a cost-based model.
+# Once the logical plan has been optimized, Spark will produce a physical plan. One of the most important optimizations at this stage is predicate pushdown to the data source level.
+# As a final step, Spark may also apply code generation for the components. Code generation is done using Janino framework to compile Java code.
+======================================================================================
+Joins (SQL and Core)
+--------------------------
+1. Core Spark Joins (RDD type joins)
+# Joins in general are expensive, since they require that corresponding keys from each RDD are located at the same
+    partition so that they can be combined locally. If the RDDs do not have known partitioners,
+    they will need to be shuffled so that both RDDs share a partitioner, and data
+    with the same keys lives in the same partitions.
+# In order to join the data, Spark needs it to be present on the same partition. 
+    The default process of join in apache Spark is called a Shuffled Hash join. 
+    The Shuffled Hash join ensures that data on each partition has the same keys by partitioning the second dataset 
+    with the same default partitioner as the first.
+# The default join operation in Spark includes only values for keys present in both
+    RDDs, and in the case of multiple values per key, provides all permutations of the
+    key/value pair.
+    
+# Always persist after repartitioning.
+# You can speed up joins by assigning a known partitioner.
+    Ex:
+    
+    def joinScoresWithAddress3(scoreRDD: RDD[(Long, Double)],
+        addressRDD: RDD[(Long, String)]) : RDD[(Long, (Double, String))]= {
+        // If addressRDD has a known partitioner we should use that,
+        // otherwise it has a default hash parttioner, which we can reconstruct by
+        // getting the number of partitions.
+        val addressDataPartitioner = addressRDD.partitioner match {
+            case (Some(p)) => p
+            case (None) => new HashPartitioner(addressRDD.partitions.length)
+        }
+        
+        val bestScoreData = scoreRDD.reduceByKey(addressDataPartitioner,
+            (x, y) => if(x > y) x else y)
+    
+        bestScoreData.join(addressRDD)
+    }
+# You can speed up joins by using a broadcast hash join. A broadcast hash join pushes one of the RDDs (the smaller one) 
+    to each of the worker nodes. Then it does a map-side combine with each partition of the larger RDD. 
+    If one of your RDDs can fit in memory or can be made to fit in memory it is
+    always beneficial to do a broadcast hash join, since it doesn’t require a shuffle.
+
+2. Spark SQL Joins
+-----------------------
+# Spark SQL supports the same basic join types as core Spark, but the optimizer is able
+    to do more of the heavy lifting for you. On the other hand, you don’t control the partitioner
+    for DataFrames or Datasets, so you can’t manually avoid shuffles as you did with core Spark joins.
+3. DataFrame Joins
+-------------------------
+# Spark’s supported join types are “inner,” “left_outer” (aliased as “outer”), “left_anti,”
+    “right_outer,” “full_outer,” and “left_semi.”
+    
+# A left semi join is the same as filtering the left table for only rows with keys present in the right table.
+    The left anti join also only returns data from the left table, but instead only returns
+    records that are not present in the right table.
+    
+4. Dataset Joins
+--------------------
+# Joining Datasets is done with joinWith, and this behaves similarly to a regular relational
+    join, except the result is a tuple of the different record types.
+
+************************************************************************************************
+Effective Transformations:
+---------------------------------
+# Repartitioning data does not necessarily require data movement across machines,     
+    since partitions may reside on the same executor.
+# Narrow transformations don’t require communication with the driver node,
+    and an arbitrary number of narrow transformations can be executed on any subset of the records (any partition) 
+    given one set of instructions from the driver. 
+    
+# In Spark terminology, we say that each series of narrow transformations can be computed in the same “stage” of the query execution plan.
+# A shuffle associated with a wide dependency marks a new stage in the RDD’s evaluation, because
+    tasks must be computed on a single partition and the data needed to compute each
+    partition of a wide dependency, may be spread across machines, transformations with 
+    wide dependencies may require data to be moved across partitions.
+    
+    For example, it should be intuitive that sorting cannot be accomplished with narrow
+    transformations because sorting requires an order to be defined on all of the records,
+    not just within each partition. Indeed, the sortByKey function has wide dependencies.
+# Stage boundaries have important performance consequences. The stages associated with one RDD must be executed in sequence.
+# Implications for Fault Tolerance: The cost of failure for a partition with wide dependencies is much higher than for one
+    with narrow dependencies, since it requires more partitions to be recomputed.
+# The coalesce operation is used to change the number of partitions in an RDD.
+# when coalesce reduces the number of output partitions, each parent partition is used in exactly one child partition
+    since the child partitions are the union of several parents.
+# Increasing the number of partitions with either a coalesce or repartition call requires a shuffle.
+# Converting to an RDD throws away a DataFrame’s schema information, whereas advantages of the Dataset API is that it is
+    strongly typed, so the values in each row will retain their type information even after conversion to an RDD.
+# One instance that often leads to problems losing type information is when working
+    with DataFrames as RDDs. DataFrames can be implicitly converted to RDDs of Rows.
+    However, since the Spark SQL Row object is not strongly typed (it can be created from
+    sequences of any value type), the Scala compiler cannot “remember” the type of value
+    used to create the row.
+# Scala arrays, which are exactly Java arrays under the hood, are the most
+    memory-efficient of the Scala collection types. Scala tuples are objects, so in some
+    instances it might be better to use a two- or three-element array rather than a tuple for expensive operations.
+    
+# mapPartition: 
+# Broadcast variables give us a way to take a local value on the driver and distribute a
+    read-only copy to each machine rather than shipping a new copy with each task.
+# If a broadcast variable is no longer needed, you can explicitly remove it by calling unpersist() on the broadcast variable.
+# Accumulators allow us to collect by-product information from a transformation or action on the workers and then
+    bring the result back to the driver. With Spark’s execution model, Spark adds to accumulators
+    only once the computation has been triggered (e.g., by an action). 
+    If the computation happens multiple times, Spark will update the accumulator each time.
+# Accumulators can be unpredictable. In their current state, they are best used where potential multiple counting is the desired behavior.
+# Broadcast variables can be written in the driver program and read on the
+    executors, whereas accumulators are written onto the executors and read on the driver.
+# Reusing RDDs: Spark offers several options for RDD reuse, including persisting, caching, and checkpointing.
+# Checkpointing is a process of truncating RDD lineage graph and saving it to a reliable distributed (HDFS) or local file system.
+# All kinds of persistence (of which caching is one type) and checkpointing have some cost and are
+    unlikely to improve performance for operations that are performed only once.
+    
+# Example: 
+    
+    val sorted = rddA.sortByKey()
+    val count = sorted.count()
+    val sample: Long = count / 10
+    sorted.take(sample.toInt)
+    
+    here, sortByKey will be called twice, by count and take, this code launches two spark jobs and each one includes a sort stage.
+    However, if we add a persist or checkpoint call before the actions (as shown in Example 5-23), the
+    transformation will only be executed once:
+    
+    val sorted = rddA.sortByKey()
+    val count = sorted.count()
+    val sample: Long = count / 10
+    rddA.persist()
+    sorted.take(sample.toInt)
+# The RDD operation cache() is equivalent to the persist operation with no storage level argument, i.e., persist(). Both cache() and
+    persist() persist the RDD with the default storage-level MEMORY_ONLY,
+    
+# By default, Spark uses a first in, first out (FIFO) paradigm to queue jobs within a system.
+    This means that the first job submitted will run in its entirety, getting priority on all the available resources.
+    
+# Spark offers a fair scheduler, modeled after the Hadoop fair scheduler, to allow high-traffic clusters to
+    share resources more evenly. The fair scheduler allocates the tasks from different jobs
+    to the executors in a “round-robin fashion” (i.e., parsing out a few tasks to the executors
+    from each job). 
+    With the fair scheduler, a short, small job can be launched before an earlier long-running job is completed.
+************************************************************************************************
+Working with Key/Value data:
+---------------------------------------
+# In general, operations on key/value pairs can cause:
+    • Out-of-memory errors in the driver
+    • Out-of-memory errors on the executor nodes
+    • Shuffle failures
+    • “Straggler tasks” or partitions, which are especially slow to compute
+    The first problem, memory errors in the driver, is usually caused by actions.
+    The last three performance issues are all most often caused by shuffles associated with the wide transformations.
+    
+# Two primary techniques to avoid shuffles performance problems: “shuffle less” and “shuffle better”.
+    Shuffle less: 
+        One way to shuffle less is to make sure to preserve partitioning across narrow transformations to avoid reshuffling data.
+        We can use the same partitioner on a sequence of wide transformations to avoid shuffles during joins.
+        We can use leveraging custom partitioners to distribute the data most effectively for downstream computations,
+        
+    Shuffle better: 
+        Not all wide transformations and not all shuffles are equally expensive or prone to failure.
+        By using wide transformations such as reduceByKey and aggregateByKey that can preform map-side reductions 
+            and that do not require loading all the records for one key into memory, you can prevent memory errors 
+            on the executors and speed up wide transformations, particularly for aggregation operations.
+# Most key/value actions (including countByKey, countByValue, lookUp, and collectAsMap) return data to the driver. 
+    In most instances they return unbounded data since the number of keys and the number of values are unknown.
+# In general, we want to try to design key/value problems so that the keys fit into memory on the driver. 
+    The values should be at least well distributed by key and at best distributed so that each key has no more records 
+    than can fit in memory on each executor.
+# As with all Spark programs, we should try to perform transformations that reduce the size of the data 
+    before calling actions that move results to the driver.
+# What’s So Dangerous About the groupByKey Function:
+    Many sources—including the Spark documentation—warn against the scalability of the groupByKey function, 
+        which returns an iterator of each element by key.
+    The reason is that the “groups” created by groupByKey are always iterators, which can’t be distributed.
+        This causes an expensive “shuffled read” step in which Spark has to read all of the
+        shuffled data from disk and into memory.
+    Each record whose key has the same hash value must live in memory on a single machine. 
+        Thus, if just one of your keys contains too many records to fit in memory on one executor, 
+        the entire operation will fail.    
+    In general it is better to choose aggregation operations that can do some map-side reduction to decrease 
+        the number of records by key before shuffling (e.g., aggregateByKey or reduceByKey).    
+        
+# Choosing an Aggregation Operation: table 6.3 on page 137.
+# Beyond being less likely to run out of memory than groupByKey, the following four functions — reduceByKey, 
+    treeAggregate, aggregateByKey, and foldByKey, are implemented to use map-side combinations, meaning that records with the same key
+    are combined before they are shuffled. This can greatly reduce the shuffled read.
+    
+# Much in the same way all of the accumulator operations (reduceByKey, aggregateByKey, foldByKey) are implemented using combineByKey, 
+    all of the join operations are implemented using the cogroup function, which uses the CoGroupedRDD type.
+# cogroup can be useful as an alternative to join when joining with multiple RDDs. Rather than doing joins on multiple RDDs 
+    with one RDD it is more performant to co-partition the RDDs since that will prevent Spark from shuffling the RDD being
+    repeatedly joined.
+    For example, if we needed to join the scoreRDD data with both addressRDD and favoriteRDD, 
+        it would be better to use cogroup than two join operations:
+        val addressScoreFood = addressRDD.cogroup(scoreRDD, foodRDD)
+
+Partitioners and Key/Value Data:
+———————————————————
+# Often RDDs without known partitioners can be RDDs loaded from storage. In this case the RDD’s data is
+    most often effectively partitioned in the same way as the underlying storage (e.g., the Splits in Hadoop). However,
+    once the data is read into Spark, Spark does not know what the underlying partitioning is and consequently
+    cannot take advantage of this information. This is one way in which checkpointing is different from
+    simply saving an RDD to stable storage and then reading it manually. In the checkpointing case, Spark saves
+    some metadata about the RDD including, if applicable, its partitioner.
+    
+# An RDD without a known partitioner will assign data to partitions according only to the data size and partition size.
+    By assigning a partitioner to an RDD, we can guarantee something about the records on each
+    partition—for example, that it falls within a given range (range partitioner) or
+    includes only elements whose keys have the same hash code (hash partitioner).
+# There are three methods that exist exclusively to change the way an RDD is partitioned.
+    For RDDs of a generic record type, "repartition" and "coalesce" can be used to
+    simply change the number of partitions that the RDD uses, irrespective of the value of the records in the RDD.
+    For RDDs of key/value pairs, we can use a function called partitionBy, which takes a partition object only.
+# Repartition shuffles the RDD with a hash partitioner and the given number of partitions.
+# Coalesce, on the other hand, is an optimized version of repartition that avoids a full shuffle 
+    if the desired number of partitions is less than the current number of partitions.
+# In all cases, repartition and coalesce do not assign a known partitioner to the RDD. 
+    In contrast, using partitionBy (and most other key/value functions that cause a shuffle) 
+    results in an RDD with a known partitioner.
+# There are two implementations for the partitioner object provided by Spark: the HashPartitioner and RangePartitioner.
+# Secondary Sort: The logic of secondary sort generalizes well beyond simply ordering data. It applies to
+    any use case that requires the records to be arranged according to two different keys.
+Using the Spark Partitioner Object:
+————————————————————
+#  Conceptually, the partitioner defines how records will be distributed and thus which
+ records will be completed by each task.
+#  Practically, a partitioner is actually an interface with two methods—numPartitions and getPartition. 
+numPartitions defines the number of partitions in the RDD after partitioning. 
+getPartition defines a mapping from a key to the integer index of the partition where records with that key
+ should be sent.
+#  There are two implementations for the partitioner object provided by Spark: the HashPartitioner and RangePartitioner.
+Hash Partitioning:
+———————————
+# A HashPartitioner (default partitioner for pair RDD operations) determines the index of 
+the child partition based on the hash value of the key.
+# The hash partitioner requires a partitions parameter, which determines the number of 
+partitions in the output RDD and the number of bins used in the hashing function. 
+If unspecified, Spark uses the value of the spark.default.parallelism value in the 
+SparkConf to determine the number of partitions.
+Range Partitioning:
+———————————
+# Range partitioning assigns records whose keys are in the same range to a given partition.
+
+Straggler Detection and Unbalanced Data:
+————————————————————————
+# "Stragglers" are those tasks within a stage that take much longer to execute than the other tasks in that stage.
+# A new stage begins after each wide transformation. When wide transformations are called on the same RDD, 
+    stages must usually be executed in sequence, so straggler tasks may hold up an entire job.
+# Stragglers occur when Spark has not allocated resources correctly, and in particular if the data has not been partitioned evenly.
+# If during a wide transformation you notice that some partitions take much longer
+    than others or show more retries, it is likely that the data is not being partitioned evenly. 
+    This usually happens because some keys have many more values than others.
+# One workaround to unbalanced keys can be adding “junk” to the end of the key, such as a random number. 
+    That way, Spark can recognize the keys as distinct and spread them across partitions.
+    
+# Think of keys in Spark not as the index or category for the records, but as the axis of parallelization for the
+    computational load.
+
+Preserving Partitioning Information Across Transformations:
+——————————————————————————————————
+# Some wide transformations change the partitioning of an RDD.
+#  Unless a transformation is known to only change the value part of the key/value pair in Spark, the resulting RDD will not have a known partitioner.
+# Some narrow transformations, such as mapValues, preserve the partitioning of an RDD if it exists.
+#  It’s important to note that common transformations like map and flatMap can change the key, so even if your function does
+ not change the key, the resulting RDD will not have a known partitioner.
+     If we don’t want to modify the keys, we can call the mapValues function because it keeps the keys, and therefore the partitioner, exactly the
+ same.
+#  The mapPartitions function will also preserve the partition if the preserves Partitioning flag is set to true.
+
+Secondary Sort:
+——————————
+# Secondary sort allows sorting by values (in addition to sorting by key) in the reduce phase in spark job.
+# Spark has a built-in function to perform secondary sort called repartitionAndSortWithinPartitions.
+# The repartitionAndSortWithinPartitions function is a wide transformation that takes a partitioner—defined on the argument RDD
+and an implicit ordering, which must be defined on the keys of the RDD.
+#  The function partitions the data according to the partitioner argument and then sorts the records on
+ each partition according to the ordering.
+# The best way to order data with two orderings is to use the repartitionAndSortWithinPartitions function.
+Distribution of Executors, Cores and Memory
+———————————————————————————
+# Running executors with too much memory often results in excessive garbage collection delays.
+# Running tiny executors (with a single core and just enough memory needed to run a single task, for example) throws away the benefits that come from running multiple tasks in a single JVM.
+# Let’s consider a 10 node cluster with following configuration:
+          **Cluster Config:**
+          10 Nodes
+          16 cores per Node
+          64GB RAM per Node
+# Based on the recommendations, Let’s assign 5 core per executors => 
+          --executor-cores = 5 (for good HDFS throughput)
+# Leave 1 core per node for Hadoop/Yarn daemons => 
+     Num cores available per node = 16-1 = 15, so total available of cores in cluster = 15 x 10 = 150
+# Number of available executors = (total cores/num-cores-per-executor) = 150/5 = 30
+# Leaving 1 executor for ApplicationManager => --num-executors = 29
+# Number of executors per node = 30/10 = 3
+# Memory per executor = 64GB/3 = 21GB
+# Counting off heap overhead = 7% of 21GB = 3GB. So, actual --executor-memory = 21 - 3 = 18GB
+# So, recommended config is: 29 executors, 18GB memory each and 5 cores each!!
+Notes:
+————
+# use broadcast join when the size of one side data is below spark.sql.autoBroadcastJoinThreshold(default 10 MB).
+# It can avoid sending all data of the large table over the network.
+# Setting spark.sql.autoBroadcastJoinThreshold = -1 will disable broadcast completely.
+# One constraint is that it also needs to fit completely into the memory of each executor and it also needs to fit into the memory of the Driver!
+# Broadcast variables are shared among executors using the Torrent protocol i.e.Peer-to-Peer protocol and the advantage of the Torrent protocol is that peers share blocks of a file among each other not relying on a central entity holding all the blocks.
+# Running executors with too much memory often results in excessive garbage collection delays.
+# Running tiny executors (with a single core and just enough memory needed to run a single task, for example) throws away the benefits that come from running multiple tasks in a single JVM.
+
+
+
+
