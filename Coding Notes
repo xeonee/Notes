@@ -1,1 +1,6 @@
 # Breadth-first uses a Queue and Depth-first uses a Stack.
+
+# // find a leaf in BT:
+     if (node.left == null && node.right == null) { ... }
+     
+     
