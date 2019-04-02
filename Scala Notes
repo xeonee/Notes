@@ -1,0 +1,81 @@
+Closure
+Companion Objects
+
+
+Case Classes
+    1. Case classes are immutable data-holding entities that are primarily used for pattern matching.
+    2. They have a short initialisation syntax without the new keyword.
+    3. Case class primary constructors automatically use vals for parameters, so they are immutable by default.
+    4. They have a built-in toString method that generates a string with the case class name and its constructor arguments.
+    5. They have built-in equality comparisons. This means that you can compare two instances of the same case class like this: 
+            CaseClassA(25) == CaseClassA(26) without implementing equals by hand.
+    6. The hashCode method is based on case class constructor arguments.
+    7. They have a built-in copy method that makes a copy of a case class instance with custom parameter values rewritten.
+            For example, CaseClassA(25).copy(SomeParameter = 26) will return a new instance of CaseClassA with a modified SomeParameter.
+    8. Scala compiler generate two class files for case classes, for case class Person.scala, Person.class and Person$.class will be generated.
+9. Scala Compiler adds a Companion Object with apply and unapply methods.
+10. Case Class can NOT extend another Case class.
+
+Implicit Classes
+1. They have to be defined inside of another trait, class, or object.
+2. You can only have one non-implicit argument in the constructor.
+3. You can’t have another object or member in scope with the same name, which implies that case classes can’t be implicit since they have a companion object with the same name.
+Functions
+1. Functions in Scala are first-class citizens. It means that they are not just class methods that can be declared and called. 
+2. On top of that they can be used as any other data type. 
+3. You can pass functions to other functions and make functions that return other functions. 
+4. You can store them in a variable or a data structure. 
+Partial Functions
+is a function that takes a function with multiple parameters and returns a function with fewer parameters.
+Currying Functions
+1. Currying process transforms a function of two parameters into a function of one parameter which returns a function of one parameter which itself returns the result.
+Pure Functions
+
+Referential  Transparency
+
+Extractor
+1. An extractor has the opposite role of a constructor: While the latter creates an object from a given list of parameters, an extractor extracts the parameters from which an object passed to it was created.
+2. Unapply method – the method that needs to be implemented by an object in order for it to be an extractor.
+Predicate
+A predicate is simply a method, function, or anonymous function that takes one or more parameters and returns a Boolean value. For instance, the following method returns
+true or false, so it’s a predicate:
+    def isEven (i: Int) = if (i % 2 == 0) true else false
+By-Name Parameters
+A parameter of type A acts like a val (its body is evaluated once, when bound) and one of type => A acts like a def (its body is evaluated whenever it is used).
+
+Methods vs Functions:
+    scala> def m1(x:Int) = x+3
+    m1: (Int)Int
+    scala> val f1 = (x:Int) => x+3
+    f1: (Int) => Int = <function>
+    The difference in the signatures between m1 and f1: the signature (Int)Int is for a method that takes one Int argument and returns an Int value, whereas the signature (Int) => Int is for a function that takes one Int argument and returns an Int value.
+    
+    You can call methods on functions like f1.toString but not on methods as they already are methods.
+
+Sealed Traits
+# A sealed trait can only be extended in the defining file
+# When we define an algebraic data type using sealed traits we allow the compiler to perform     exhaustiveness checking. In simpler words, this means the compiler will shout at us if we miss out a case in our structural recursion...
+     scala> Option(1) match {
+             | case None => "Yeah"
+             | }
+     <console>:8: warning: match may not be exhaustive.
+     It would fail on the following input: Some(_)
+                         Option(1) match {
+                         ^
+# can be used to replace java enum in scala.
+Lazy vs Strict Collections
+We can classify collections into two categories: those that evaluate their elements when they are created, and those that evaluate their elements when they are needed only.
+An example of the first category is List[A]: when we create a list we compute all its elements, when we transform a list (e.g. using map) we compute all the elements of the resulting list. We say that list is a strict collection type.
+An example of the second category is Stream[A]: we can create and transform streams without computing their elements. Those might never be computed unless we iterate through them. We say that streams are lazy.
+Futures and Promise
+# 
+Notes
+# Recursive function has to define return type.
+# There are 2 things that must be true for functions to run in independence. First, they must be pure functions. This is important because they                     must not be affected by the execution of the other.
+The second thing that must be true for independence is that the output of one function is not used as the input of the other.If this was the case, then we’d have to wait for one to finish before starting the second.
+Therefore, these 2 functions can be executed in ANY ORDER. The compiler can make this determination without any help from the programmer.
+The order of execution in a Pure Functional Language can be determined by the compiler.
+With Pure Functional Languages, we have the potential to take advantage of the CPU cores at a fine grained level automatically without changing a single line of code.
+# val functions can use case expressions without a beginning match.
+# A case class can take arguments, so each instance of that case class can be different based on the values of it's arguments. A case object on the other hand does not take args in the constructor, so there can only be one instance of it (a singleton, like a regular scala object is).
+# Nothing is a special type in Scala, it is at the bottom of type system, meaning that it is a subtype of any other type.
