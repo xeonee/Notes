@@ -1,0 +1,95 @@
+Lifecycle of Streaming app
+As soon as you call context.start(), driver creates the receivers on one or more executers.
+Why the receiver not on the driver: because if you put those receivers on executers, you can have more them one receivers which can be used in multi client system.
+# The measure Spark decides to split the incoming data on is Time. Hence , Spark Streaming waits for a fixed (but configurable) amount of time, before distributing the collection across the network and started processing. This approach is known as Micro-Batching.
+# Why batches are bounded by time rather than a fixed number of elements?
+        A fixed number (or size) of elements might be considered a superior solution from the point of view of the implementation: it ensures the division of the task
+         across executors is more fair. But in a highly variable throughput, the time it would take to receive that many elements has no particular bound.
+         By losing the time-based constraint, it has lost any meaningful connection to the real-time processing of a stream. 
+#  Spark Streaming can thus, as a whole, be seen as a bulk-synchronous system: every time the clock hits a certain mark, a new collection is formed from the data collected
+         since the last tick, and sent across the network.
+Spark Streaming Processing Model
+# All the Spark executors on the cluster are assumed to have a synchronous clock, for example synchronised through an NTP server.
+     one or several of the executors runs a special Spark job, a Receiver. This receiver is tasked with receiving new elements of the Stream. It receives two clock ticks:
+             —the first and less frequent is the batch interval. It marks when the Receiver should assemble the data from the stream received since the last clock tick,
+                 and produce an RDD for distributed processing on the cluster.
+             —the second and most frequent clock tick is called the block interval. It signals when elements received from the Stream should be allocated to a block, that
+                 is, the portion of the Stream that should be processed by a single executor, for this current interval. A block will make up a partition of the RDD produced at
+                each batch interval.
+Behind the scenes, start() method kicks off the execution of JobScheduler, which in turn starts JobGenerator. JobGenerator is in charge of creating jobs from
+     DStreams, RDD checkpointing, and metadata checkpointing every batch interval.
+     awaitTermination() uses a condition variable-like mechanism to block until either the application explicitly invokes stop() or the application is terminated.
+ FileInputDStream internally monitors the specified directory on the file system, and every batch interval picks up new files that have become visible. Each one of
+     these files is turned into an RDD.
+ Invoking map() on the FileInputDStream results in the creation of a MappedDStream , which simply invokes the map function on the underlying RDD.
+DStreams
+# DStreams are to Spark Streaming what RDDs are to Spark. A DStream converts a potentially endless flow of data into discrete batches of RDDs. 
+    Every batch interval, newly generated RDDs are consumed by pushing them through user-defined logic. 
+    Generally, no micro-batch invariant state is maintained—each batch is stateless.
+Stateful DStreams have the same fault-tolerance properties as regular ones, with a single catch: they need to be
+ checkpointed regularly to negate endless regeneration.
+ RDDs that constitute a DStream are partitioned and have configurable persistence levels.
+Internally, StreamingContext creates a SparkContext object and a JobScheduler object.
+# Checkpointing
+    Checkpointing is the process of saving the state of the StreamingContext or a DStream to secondary storage. 
+    In case of DStreams, checkpointing ensures that the root of the lineage graph remains within bounds.
+     That is why checkpointing is a mandatory step for stateful DStream operations,
+#  Dynamic Executor Allocation
+     In most cases, you do not know the resource requirements of applications up front.  For instance, a streaming
+         application might experience traffic spikes that would require more resources to process. In such situations, elasticity is key. 
+    That is where the dynamic resource allocation service comes in. 
+    It enables Spark to dynamically scale the number of executors up and down in reaction to application semantics.  
+    Dynamic executor allocation can be enabled by setting the configuration parameter spark.dynamicAllocation.enabled to true .
+#  Parallelism, Partitions, and Tasks
+     Task parallelism is the single most important factor when it comes to performance in Spark Streaming.
+     Finding the optimum value is nontrivial: setting it too high leads to contention, whereas setting it too low
+         results in underutilization of resources.
+     There is an almost one-to-one mapping between the number of partitions in an RDD and the number of tasks.
+     Narrow dependency: a partition gets its data from a single partition in the preceding transformation.
+    Wide dependency: a partition reads in records from multiple partitions in the preceding transformation, This applies to all *ByKey operations.
+By default, Spark uses a FIFO policy to allocate resources to jobs: the first job grabs all resources, then the second one, and so on. This is undesirable for streaming applications where latency is key.
+To remedy this, the default scheduler can be replaced with the Hadoop Fair scheduler, which tries to equally distribute resources across jobs This can be enabled by setting spark.scheduler.mode to FAIR .
+#####################################################
+# Notes
+#####################################################
+#  Use ssc.fileStream() and set newFilesOnly to false to read existing files and use ssc.textFileStream() to read only those files that have been recently added to the input folder. 
+#   Compressed files, such as gzipped ones, are not splittable and hence result in a single RDD partition. A good practice is to repartition such a DStream  manually after creating it.
+#  transform function:  Allows arbitrary operations to be applied to each RDD in this DStream . This is most useful when you need
+ to use operations directly exposed by RDDs. 
+For instance, DStream s currently do not allow you to sort their elements, but RDDs do...
+        val sortedByAuthor = comments.transform(rdd =>
+        (rdd.sortBy(rec => (parse(rec) \ "author").values.toString)))
+#  in YARN, the NodeManager performs the role of the worker.
+#  By default, there is a one-to-one mapping between a core and a task. This number can be increased via the configuration parameter spark.task.cpus . 
+    Use this setting for heavy-duty, CPU-bound tasks. Examples of such operations include compression and matrix multiplication.
+#  The executor Java heap is shared between RDDs, shuffle, and application objects. By default, RDDs use 60% ( spark.storage.memoryFraction ) of the memory, 
+        and shuffle has 20% at its disposal ( spark.shuffle.memoryFraction ). 
+        Excessive use spills the contents of the aggregation phase of the shuffle to disk.
+Word Count:
+    val context = new StreamingContext(conf, Seconds(1))
+    val lines = context.socketTextStream(…)
+    val words = lines.flatMap(_.split(“ “))
+    val wordCounts = words.map(x=>(x, 1)).reduceByKey(_+_)
+    wordCounts.print()  // print the DStream contents on the screen
+    context.start()  // starts the streaming job
+-----------------------------------------------------------------------------------------------
+Delivery Semantics:
+# Delivery semantics indicates intigrity of the data when it is moved from storage A to storage B, there are 3 types of delivery semantics:
+# At Most Once: This semantics guarantees that messages will not be duplicated, but they can be lost.
+At most one semantics is applicable in problems where slight information losses are not critical, and repeated processing of events may lead to an incorrect result.
+As an example, consider the task of antifraud. It's required to identify the users with suspicious behavior based on page view logs. If a small number of logs is lost, this will not greatly affect the result. In the worst case, blocking of bad accounts will be completed a little bit later. But, re-processing of events can cause an innocent user blockage.
+# At Least Once: This semantic ensures that not a single message will be lost, but they can be duplicated.
+ex: counting the number of unique users for each site. If some event, about the site visiting, will be counted twice - it will not change the result of our task.
+# Exactly Once: It ensures that each message is delivered once and only once.
+For example if a mobile operator wants to calculate how much should each user pay, loss of information about any call, like double accounting, is unacceptable.
+# Why don't we always use "Exactly Once" semantic:
+# "Exactly Once" is expensive and hard to implement.
+# Loss of data may be very small compared to total size of data.
+# many tasks can be done without "Exactly Once" semantic.
+# In some cases, it is possible to convert "At Least Once" to "Exactly Once" semantic.
+-----------------------------------------------------------------------------------------------
+Approaches to real-time data processing:
+# There are two general approaches to real-time data processing: event-based and micro-batch.
+# The event-based allows you to achieve less lag, micro-batch approach have a bigger lag but allows you to process more data on same resources.
+# In real life, you always choose throughput vs latency.
+-----------------------------------------------------------------------------------------------
