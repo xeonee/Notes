@@ -402,6 +402,23 @@ Notes:
 # Running executors with too much memory often results in excessive garbage collection delays.
 # Running tiny executors (with a single core and just enough memory needed to run a single task, for example) throws away the benefits that come from running multiple tasks in a single JVM.
 
+DAGScheduler:
+# Spark stages are created by breaking the RDD graph at shuffle boundaries.
+# RDD operations with "narrow" dependencies, like map() and filter(), are pipelined together into one set of tasks
+  in each stage, but operations with shuffle dependencies require multiple stages (one to write a
+  set of map output files, and another to read those files after a barrier). 
+# There are two types of stages: [[ResultStage]], for the final stage that executes an action, and [[ShuffleMapStage]], which writes map output files for a shuffle.
+# Stages are often shared across multiple jobs, if these jobs reuse the same RDDs.
+
+# DAGScheduler is the scheduling layer of Apache Spark that implements stage-oriented scheduling. 
+# It transforms a logical execution plan (i.e. RDD lineage) to a physical execution plan (using stages).
+# After an action has been called, SparkContext hands over a logical plan to DAGScheduler that it in turn translates to a set of stages that are submitted as TaskSets for execution.
+# DAGScheduler does three things in Spark:
+	Computes an execution DAG, i.e. DAG of stages, for a job.
+	Determines the preferred locations to run each task on.
+	Handles failures due to shuffle output files being lost.
+# DAGScheduler uses an event queue architecture in which a thread can post DAGSchedulerEvent events, e.g. a new job or stage being submitted, that DAGScheduler reads and executes sequentially. 
+# DAGScheduler runs stages in topological order.
 
 
 
