@@ -59,6 +59,19 @@ For example if a mobile operator wants to calculate how much should each user pa
 # The event-based allows you to achieve less lag, micro-batch approach have a bigger lag but allows you to process more data on same resources.
 # In real life, you always choose throughput vs latency.
 
+Stateful Stream Processing:
+---------------------------
+
+# Many complex stream processing pipelines must maintain state across a period of time.
+# Such stateful streaming computations could be implemented in Spark Streaming using its updateStateByKey operation.
+# mapWithState is the new API and can provide up to 10x higher performance when compared to updateStateByKey
+# Stateful transformations require that we operate on a DStream which encapsulates a key value pair, in the form of DStream[(K, V)]
+# A major downside of using updateStateByKey is the fact that for each new incoming batch, the transformation iterates the entire state store, regardless of whether a new value for a given key has been consumed or not. This can effect performance especially when dealing with a large amount of state over time.
+# There is no built-in timeout mechanism in updateStateByKey.
+# mapWithState has built-in timeout mechanism, Once that timeout is hit, mapWithState will be invoked one last time with a special flag.
+# In mapWithState, Only keys which have new data arrived in the current batch will be iterated. This means no longer needing to iterate the entire state store at every batch interval.
+# We can use State class to create State object and perform many helping operations like exists(), get(), remove() etc.
+
 Notes:
 ------
 #  Use ssc.fileStream() and set newFilesOnly to false to read existing files and use ssc.textFileStream() to read only those files that have been recently added to the input folder. 
