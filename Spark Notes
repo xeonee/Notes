@@ -420,5 +420,15 @@ DAGScheduler:
 # DAGScheduler uses an event queue architecture in which a thread can post DAGSchedulerEvent events, e.g. a new job or stage being submitted, that DAGScheduler reads and executes sequentially. 
 # DAGScheduler runs stages in topological order.
 
+Closure in Spark:
+# A closure is a function, whose return value depends on the value of one or more variables declared outside this function.
+ 	var counter = 0
+	var rdd = sc.parallelize(data)
+
+	// Wrong: Don't do this!! It might work in local but not in distributed env.
+	rdd.foreach(x => counter += x)
+
+	// for distributed env, use accumulator.
+	var counter = sc.accumulator(0)
 
 
