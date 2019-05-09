@@ -1,8 +1,7 @@
-Closure
-Companion Objects
+Scala Notes
+------------
 
-
-Case Classes
+Case Classes:
     1. Case classes are immutable data-holding entities that are primarily used for pattern matching.
     2. They have a short initialisation syntax without the new keyword.
     3. Case class primary constructors automatically use vals for parameters, so they are immutable by default.
@@ -15,6 +14,12 @@ Case Classes
     8. Scala compiler generate two class files for case classes, for case class Person.scala, Person.class and Person$.class will be generated.
 9. Scala Compiler adds a Companion Object with apply and unapply methods.
 10. Case Class can NOT extend another Case class.
+
+Companion Objects:
+# An object with the same name as a class is called a companion object.
+# companion object must be defined in the same file.
+# A companion object can access the private members of its companion.
+# Use a companion object for methods and values which are not specific to instances of the companion class.
 
 Implicit Classes
 1. They have to be defined inside of another trait, class, or object.
