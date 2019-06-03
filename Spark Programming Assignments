@@ -1,0 +1,8 @@
+Spark Programming Questions:
+
+1. MaxRevenue:
+
+Given two dataframes "Categories" and "Products", find the max revenue for category present in Products df.
+
+    val category: DataFrame = categories.toDF("id", "desc")
+    val product: DataFrame = products.toDF("id", "catId", "desc", "revenue")
