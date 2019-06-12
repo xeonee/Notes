@@ -4,3 +4,12 @@
      if (node.left == null && node.right == null) { ... }
      
      
+PayPal Questions:
+
+# find the subsets of an array.
+# Lowest Common Ancestor in a Binary Tree.
+# Longest Common Subsequence.
+# Find Union and Intersection of two unsorted arrays.
+# Evaluate a boolean expression represented as string.
+# Java 8 Optional Class.
+# Print Concatenation of Zig-Zag String in ‘n’ Rows.
