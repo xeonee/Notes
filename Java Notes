@@ -1,0 +1,43 @@
+Unmodifiable Vs Immutable Collections:
+
+# Unmodifiable collections are usually read-only views (wrappers) of other collections. 
+  You can't add, remove or clear them, but the underlying collection can change.
+# Immutable collections can't be changed at all - they don't wrap another collection - they have their own elements, 
+  like guava's ImmutableList.
+
+# Example:
+    List<String> strings = new ArrayList<String>();
+    List<String> unmodifiable = Collections.unmodifiableList(strings);
+    unmodifiable.add("New string"); // will fail at runtime
+    strings.add("Aha!"); // will succeed
+    System.out.println(unmodifiable);
+
+try-with-resources:
+
+# allows us to declare resources to be used in a try block with the assurance that the resources will be closed when after 
+execution of that block.
+
+try (PrintWriter writer = new PrintWriter(new File("test.txt"))) {
+    writer.println("Hello World");
+}
+
+
+Class Loaders:
+
+# There are three different class loaders here; application, extension, and bootstrap.
+# Bootstrap Class Loader: It’s mainly responsible for loading JDK internal classes, typically rt.jar and other core libraries 
+located in $JAVA_HOME/jre/lib directory. Additionally, Bootstrap class loader serves as a parent of all the other ClassLoader instances.
+# Extension Class Loader: The extension class loader is a child of the bootstrap class loader and takes care of loading the extensions 
+of the standard core Java classes. Extension class loader loads from the JDK extensions directory, usually $JAVA_HOME/lib/ext.
+# System Class Loader: It takes care of loading all the application level classes into the JVM. 
+  It loads files found in the classpath environment variable, -classpath or -cp command line option. 
+  Also, it’s a child of Extensions classloader.
+
+
+ClassNotFoundException vs NoClassDefFoundError:
+
+# ClassNotFoundException is a checked exception which occurs when an application tries to load a class through its fully-qualified 
+name and can not find its definition on the classpath.
+# NoClassDefFoundError is a fatal error. The error occurs when a compiler could successfully compile the class, but Java runtime 
+could not locate the class file. It usually happens when there is an exception while executing a static block or 
+initializing static fields of the class, so class initialization fails.
