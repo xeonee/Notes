@@ -432,3 +432,13 @@ Closure in Spark:
 	var counter = sc.accumulator(0)
 
 
+    files.zipWithIndex.map(
+      file => getExtension(file._1.getName)._1+(file._2+1)+getExtension(file._1.getName)._2)
+      .foreach(println)
+      
+        def getExtension(str: String): (String, String) = {
+    if (str == null) return null
+    val pos:Int = str.lastIndexOf(".")
+    if (pos == -1) return (str, str)
+    (str.substring(0, pos), str.substring(pos))
+  }
